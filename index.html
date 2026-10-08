@@ -1,0 +1,1264 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Blocky Royale 3D: Fortnite x Roblox x Minecraft</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Three.js CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- FontAwesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Inter:wght@400;600;800&display=swap');
+        .pixel-font { font-family: 'Press Start 2P', monospace; }
+        body { font-family: 'Inter', sans-serif; user-select: none; overflow: hidden; background: #0f172a; }
+        .crosshair {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            width: 12px; height: 12px; pointer-events: none; transition: transform 0.05s ease;
+        }
+        .crosshair::before, .crosshair::after {
+            content: ''; position: absolute; background: rgba(0, 255, 200, 0.9); box-shadow: 0 0 4px rgba(0,255,200,0.8);
+        }
+        .crosshair::before { top: 5px; left: 0; width: 12px; height: 2px; }
+        .crosshair::after { top: 0; left: 5px; width: 2px; height: 12px; }
+        .crosshair.spread { transform: translate(-50%, -50%) scale(1.6); }
+        .modal-blur { backdrop-filter: blur(10px); background: rgba(15, 23, 42, 0.85); }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+    </style>
+</head>
+<body class="h-full text-white relative">
+
+    <div id="canvas-container" class="absolute inset-0 w-full h-full z-0 cursor-crosshair"></div>
+
+    <!-- Crosshair -->
+    <div id="crosshair" class="crosshair z-10"></div>
+
+    <div id="hud" class="absolute inset-0 z-10 pointer-events-none flex flex-col justify-between p-4 sm:p-6">
+        
+        <!-- Top Bar: Health, Shield, Ammo, Mini Leaderboard preview -->
+        <div class="flex justify-between items-start w-full">
+            <!-- Player Stats -->
+            <div class="flex flex-col gap-2 pointer-events-auto bg-slate-900/80 p-4 rounded-xl border border-slate-700/60 shadow-2xl backdrop-blur-md min-w-[240px]">
+                <div class="flex items-center justify-between text-xs pixel-font text-cyan-400 mb-1">
+                    <span>STATUS</span>
+                    <span id="hud-level" class="text-yellow-400">LVL 1</span>
+                </div>
+                <!-- Health Bar -->
+                <div class="w-full">
+                    <div class="flex justify-between text-xs font-bold mb-1">
+                        <span class="text-rose-400"><i class="fa-solid fa-heart"></i> HEALTH</span>
+                        <span id="hp-val">100/100</span>
+                    </div>
+                    <div class="w-full bg-slate-800 h-3 rounded-full overflow-hidden p-0.5 border border-slate-700">
+                        <div id="hp-bar" class="bg-gradient-to-r from-rose-600 to-rose-400 h-full rounded-full transition-all duration-300 w-full"></div>
+                    </div>
+                </div>
+                <!-- Shield Bar -->
+                <div class="w-full">
+                    <div class="flex justify-between text-xs font-bold mb-1">
+                        <span class="text-blue-400"><i class="fa-solid fa-shield"></i> SHIELD</span>
+                        <span id="shield-val">50/50</span>
+                    </div>
+                    <div class="w-full bg-slate-800 h-3 rounded-full overflow-hidden p-0.5 border border-slate-700">
+                        <div id="shield-bar" class="bg-gradient-to-r from-blue-600 to-cyan-400 h-full rounded-full transition-all duration-300 w-full"></div>
+                    </div>
+                </div>
+                <!-- XP / Score -->
+                <div class="flex justify-between items-center text-xs text-slate-300 pt-1 border-t border-slate-800">
+                    <span>Score: <strong id="hud-score" class="text-emerald-400">0</strong></span>
+                    <span>Streak: <strong id="hud-streak" class="text-orange-400">0</strong></span>
+                </div>
+            </div>
+
+            <!-- Weapon & Ammo Display -->
+            <div class="flex flex-col items-end gap-2 pointer-events-auto bg-slate-900/80 p-4 rounded-xl border border-slate-700/60 shadow-2xl backdrop-blur-md min-w-[220px]">
+                <div class="text-xs pixel-font text-amber-400 mb-1">CURRENT WEAPON</div>
+                <div id="weapon-name" class="text-lg font-black tracking-wider text-white">AK-47</div>
+                <div class="flex items-baseline gap-2">
+                    <span id="ammo-current" class="text-3xl font-black text-cyan-300">30</span>
+                    <span class="text-slate-400 text-lg">/ <span id="ammo-reserve">90</span></span>
+                </div>
+                <div id="reload-indicator" class="text-xs text-yellow-400 font-bold hidden animate-pulse mt-1">RELOADING...</div>
+            </div>
+        </div>
+
+        <!-- Center / Action Notices -->
+        <div class="flex flex-col items-center justify-center pointer-events-none">
+            <div id="interaction-prompt" class="bg-slate-900/90 text-yellow-300 font-bold px-4 py-2 rounded-lg border border-yellow-500/50 shadow-lg text-sm mb-4 hidden animate-bounce">
+                Press [E] to Open Crate / Loot
+            </div>
+            <div id="kill-feed" class="flex flex-col gap-1 items-center w-full max-w-md"></div>
+        </div>
+
+        <!-- Bottom Bar: Weapon Slots & Mini-map / Controls Info -->
+        <div class="flex justify-between items-end w-full">
+            <!-- Weapon Hotbar (1-8) -->
+            <div class="flex gap-2 pointer-events-auto bg-slate-900/80 p-2 rounded-xl border border-slate-700/60 shadow-xl backdrop-blur-md">
+                <div class="weapon-slot flex flex-col items-center justify-center w-12 h-14 rounded-lg bg-slate-800 border-2 border-cyan-500 cursor-pointer text-xs font-bold transition-all relative" data-slot="0">
+                    <span class="absolute top-1 left-1 text-[10px] text-slate-400">1</span>
+                    <i class="fa-solid fa-gun text-lg text-cyan-300 mb-1"></i>
+                    <span class="text-[9px] truncate w-full text-center px-0.5">AK</span>
+                </div>
+                <div class="weapon-slot flex flex-col items-center justify-center w-12 h-14 rounded-lg bg-slate-800 border border-slate-700 cursor-pointer text-xs font-bold transition-all relative" data-slot="1">
+                    <span class="absolute top-1 left-1 text-[10px] text-slate-400">2</span>
+                    <i class="fa-solid fa-crosshairs text-lg text-emerald-300 mb-1"></i>
+                    <span class="text-[9px] truncate w-full text-center px-0.5">AR</span>
+                </div>
+                <div class="weapon-slot flex flex-col items-center justify-center w-12 h-14 rounded-lg bg-slate-800 border border-slate-700 cursor-pointer text-xs font-bold transition-all relative" data-slot="2">
+                    <span class="absolute top-1 left-1 text-[10px] text-slate-400">3</span>
+                    <i class="fa-solid fa-bolt text-lg text-amber-300 mb-1"></i>
+                    <span class="text-[9px] truncate w-full text-center px-0.5">SCAR</span>
+                </div>
+                <div class="weapon-slot flex flex-col items-center justify-center w-12 h-14 rounded-lg bg-slate-800 border border-slate-700 cursor-pointer text-xs font-bold transition-all relative" data-slot="3">
+                    <span class="absolute top-1 left-1 text-[10px] text-slate-400">4</span>
+                    <i class="fa-solid fa-bullseye text-lg text-rose-300 mb-1"></i>
+                    <span class="text-[9px] truncate w-full text-center px-0.5">Sniper</span>
+                </div>
+                <div class="weapon-slot flex flex-col items-center justify-center w-12 h-14 rounded-lg bg-slate-800 border border-slate-700 cursor-pointer text-xs font-bold transition-all relative" data-slot="4">
+                    <span class="absolute top-1 left-1 text-[10px] text-slate-400">5</span>
+                    <i class="fa-solid fa-fire text-lg text-orange-400 mb-1"></i>
+                    <span class="text-[9px] truncate w-full text-center px-0.5">Flame</span>
+                </div>
+                <div class="weapon-slot flex flex-col items-center justify-center w-12 h-14 rounded-lg bg-slate-800 border border-slate-700 cursor-pointer text-xs font-bold transition-all relative" data-slot="5">
+                    <span class="absolute top-1 left-1 text-[10px] text-slate-400">6</span>
+                    <i class="fa-solid fa-bomb text-lg text-purple-400 mb-1"></i>
+                    <span class="text-[9px] truncate w-full text-center px-0.5">Nade</span>
+                </div>
+                <div class="weapon-slot flex flex-col items-center justify-center w-12 h-14 rounded-lg bg-slate-800 border border-slate-700 cursor-pointer text-xs font-bold transition-all relative" data-slot="6">
+                    <span class="absolute top-1 left-1 text-[10px] text-slate-400">7</span>
+                    <i class="fa-solid fa-jet-fighter text-lg text-blue-300 mb-1"></i>
+                    <span class="text-[9px] truncate w-full text-center px-0.5">Mini</span>
+                </div>
+                <div class="weapon-slot flex flex-col items-center justify-center w-12 h-14 rounded-lg bg-slate-800 border border-slate-700 cursor-pointer text-xs font-bold transition-all relative" data-slot="7">
+                    <span class="absolute top-1 left-1 text-[10px] text-slate-400">8</span>
+                    <i class="fa-solid fa-burst text-lg text-yellow-300 mb-1"></i>
+                    <span class="text-[9px] truncate w-full text-center px-0.5">Shotgun</span>
+                </div>
+            </div>
+
+            <!-- Controls Help & Admin Chat Hint -->
+            <div class="flex flex-col items-end gap-1 pointer-events-auto">
+                <button id="open-leaderboard-btn" class="bg-slate-800/90 hover:bg-slate-700 text-cyan-300 pixel-font text-xs px-3 py-2 rounded-lg border border-slate-600 shadow-lg transition-all flex items-center gap-2">
+                    <i class="fa-solid fa-trophy text-yellow-400"></i> LEADERBOARD [Tab]
+                </button>
+                <div class="text-[11px] text-slate-400 bg-slate-900/80 px-3 py-1.5 rounded-lg border border-slate-800 shadow">
+                    Press <span class="text-cyan-400 font-bold">/</span> or <span class="text-cyan-400 font-bold">F2</span> for Admin/Owner Console
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="main-menu" class="absolute inset-0 z-30 modal-blur flex items-center justify-center p-4">
+        <div class="bg-slate-900/95 border-2 border-cyan-500/50 rounded-2xl p-8 max-w-lg w-full shadow-2xl flex flex-col items-center text-center relative overflow-hidden">
+            <div class="absolute -top-10 -left-10 w-40 h-40 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none"></div>
+            <div class="absolute -bottom-10 -right-10 w-40 h-40 bg-purple-500/10 rounded-full blur-3xl pointer-events-none"></div>
+
+            <h1 class="pixel-font text-2xl sm:text-3xl text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-emerald-400 to-purple-500 mb-2">
+                BLOCKY ROYALE 3D
+            </h1>
+            <p class="text-xs text-slate-400 mb-6">Minecraft x Roblox x Fortnite Multiplayer Experience</p>
+
+            <div class="w-full flex flex-col gap-4 mb-6">
+                <div>
+                    <label class="block text-left text-xs font-bold text-slate-300 mb-1">PLAYER NAME</label>
+                    <input type="text" id="player-name-input" value="BlockyHero" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-3 text-white font-semibold focus:outline-none focus:border-cyan-500 transition-all">
+                </div>
+                <div>
+                    <label class="block text-left text-xs font-bold text-slate-300 mb-1">CHARACTER SKIN STYLE</label>
+                    <div class="grid grid-cols-3 gap-2">
+                        <button class="skin-btn bg-slate-800 border-2 border-cyan-500 py-2 rounded-lg text-xs font-bold text-cyan-300 transition-all" data-skin="default">Classic</button>
+                        <button class="skin-btn bg-slate-800 border border-slate-700 py-2 rounded-lg text-xs font-bold text-slate-300 transition-all" data-skin="ninja">Ninja</button>
+                        <button class="skin-btn bg-slate-800 border border-slate-700 py-2 rounded-lg text-xs font-bold text-slate-300 transition-all" data-skin="gold">Gold Boss</button>
+                    </div>
+                </div>
+            </div>
+
+            <button id="start-game-btn" class="w-full bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-black py-4 rounded-xl shadow-lg shadow-cyan-500/25 transition-all text-base tracking-wider uppercase pixel-font">
+                DEPLOY INTO BATTLE
+            </button>
+
+            <div class="mt-6 text-left text-xs text-slate-400 border-t border-slate-800 pt-4 w-full">
+                <span class="font-bold text-cyan-400">Controls:</span> WASD to Move | Mouse to Aim | Click to Shoot | R to Reload | E to Open Crates | Space to Jump | Shift to Sprint | / for Console
+            </div>
+        </div>
+    </div>
+
+    <div id="leaderboard-modal" class="absolute inset-0 z-30 modal-blur flex items-center justify-center p-4 hidden">
+        <div class="bg-slate-900/95 border-2 border-yellow-500/50 rounded-2xl p-6 max-w-xl w-full shadow-2xl flex flex-col relative max-h-[80vh]">
+            <div class="flex justify-between items-center mb-4 border-b border-slate-800 pb-3">
+                <h2 class="pixel-font text-lg text-yellow-400 flex items-center gap-2">
+                    <i class="fa-solid fa-trophy"></i> BATTLE LEADERBOARD
+                </h2>
+                <button id="close-leaderboard-btn" class="text-slate-400 hover:text-white text-xl font-bold px-2">&times;</button>
+            </div>
+            <div class="overflow-y-auto flex-grow pr-1">
+                <table class="w-full text-left text-sm">
+                    <thead>
+                        <tr class="border-b border-slate-800 text-slate-400 text-xs uppercase pixel-font">
+                            <th class="py-2 px-3">Rank</th>
+                            <th class="py-2 px-3">Player</th>
+                            <th class="py-2 px-3 text-center">Kills</th>
+                            <th class="py-2 px-3 text-center">Deaths</th>
+                            <th class="py-2 px-3 text-right">Score</th>
+                        </tr>
+                    </thead>
+                    <tbody id="leaderboard-tbody" class="divide-y divide-slate-800/60">
+                        <!-- Populated by JS -->
+                    </tbody>
+                </table>
+            </div>
+            <div class="mt-4 pt-3 border-t border-slate-800 text-center text-xs text-slate-400">
+                Top players earn ultimate bragging rights and admin favor!
+            </div>
+        </div>
+    </div>
+
+    <div id="admin-console" class="absolute inset-0 z-40 modal-blur flex items-center justify-center p-4 hidden">
+        <div class="bg-slate-950 border-2 border-purple-500/80 rounded-2xl p-6 max-w-2xl w-full shadow-2xl flex flex-col relative font-mono">
+            <div class="flex justify-between items-center mb-3 border-b border-purple-900/50 pb-3">
+                <h2 class="pixel-font text-sm text-purple-400 flex items-center gap-2">
+                    <i class="fa-solid fa-terminal"></i> CONSOLE & ADMIN COMMANDS
+                </h2>
+                <button id="close-console-btn" class="text-slate-400 hover:text-white text-xl font-bold">&times;</button>
+            </div>
+
+            <div id="console-output" class="bg-slate-900/90 border border-purple-900/40 rounded-xl p-4 h-64 overflow-y-auto text-xs text-cyan-300 flex flex-col gap-1.5 mb-4 shadow-inner">
+                <div class="text-slate-400">[System] Welcome to Blocky Royale Console. Type <span class="text-yellow-400">/help</span> for available commands.</div>
+                <div class="text-slate-400">[System] To gain Admin rights, log in with owner password or request from owner.</div>
+            </div>
+
+            <!-- Command Suggestions / Quick Buttons -->
+            <div class="flex flex-wrap gap-1.5 mb-3">
+                <button class="quick-cmd bg-slate-900 hover:bg-slate-800 border border-slate-800 text-[11px] px-2.5 py-1 rounded text-cyan-400" data-cmd="/help">/help</button>
+                <button class="quick-cmd bg-slate-900 hover:bg-slate-800 border border-slate-800 text-[11px] px-2.5 py-1 rounded text-cyan-400" data-cmd="/godmode">/godmode</button>
+                <button class="quick-cmd bg-slate-900 hover:bg-slate-800 border border-slate-800 text-[11px] px-2.5 py-1 rounded text-cyan-400" data-cmd="/givegun all">/givegun all</button>
+                <button class="quick-cmd bg-slate-900 hover:bg-slate-800 border border-slate-800 text-[11px] px-2.5 py-1 rounded text-cyan-400" data-cmd="/heal">/heal</button>
+                <button class="quick-cmd bg-slate-900 hover:bg-slate-800 border border-slate-800 text-[11px] px-2.5 py-1 rounded text-purple-400" data-cmd="/login owner123">/login owner123</button>
+                <button class="quick-cmd bg-slate-900 hover:bg-slate-800 border border-slate-800 text-[11px] px-2.5 py-1 rounded text-amber-400" data-cmd="/meteor">/meteor</button>
+                <button class="quick-cmd bg-slate-900 hover:bg-slate-800 border border-slate-800 text-[11px] px-2.5 py-1 rounded text-amber-400" data-cmd="/spawncrate">/spawncrate</button>
+            </div>
+
+            <!-- Input Bar -->
+            <div class="flex gap-2">
+                <span class="flex items-center text-purple-400 font-bold">&gt;</span>
+                <input type="text" id="console-input" placeholder="Type command here (e.g. /givegun sniper, /grantadmin, /meteor)..." class="flex-grow bg-slate-900 border border-purple-900/60 rounded-xl px-4 py-3 text-white text-xs focus:outline-none focus:border-purple-500 transition-all font-mono">
+                <button id="console-send-btn" class="bg-purple-600 hover:bg-purple-500 text-white font-bold px-6 py-3 rounded-xl text-xs pixel-font shadow-lg transition-all">EXEC</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- GLOBAL GAME STATE & CONSTANTS ---
+        let scene, camera, renderer, clock;
+        let player = {
+            position: new THREE.Vector3(0, 0, 15),
+            velocity: new THREE.Vector3(),
+            rotation: { yaw: 0, pitch: 0 }
+        };
+        let bots = [], crates = [], projectiles = [], particles = [], bullets = [];
+        let mapObjects = [];
+        let gameStarted = false;
+        let isPointerLocked = false;
+
+        // Player Stats
+        let playerStats = {
+            name: "BlockyHero",
+            skin: "default",
+            health: 100,
+            maxHealth: 100,
+            shield: 50,
+            maxShield: 50,
+            score: 0,
+            kills: 0,
+            deaths: 0,
+            streak: 0,
+            level: 1,
+            speed: 0.12,
+            godMode: false,
+            isAdmin: false,
+            isOwner: false,
+            doubleDamage: false,
+            sizeScale: 1
+        };
+
+        // Weapons Database
+        const weapons = {
+            ak47: { name: "AK-47", ammo: 30, maxAmmo: 90, damage: 28, fireRate: 120, reloadTime: 1500, type: "rifle", slot: 0 },
+            ar15: { name: "AR-15", ammo: 30, maxAmmo: 90, damage: 24, fireRate: 90, reloadTime: 1400, type: "rifle", slot: 1 },
+            scar: { name: "SCAR", ammo: 25, maxAmmo: 75, damage: 36, fireRate: 150, reloadTime: 1600, type: "rifle", slot: 2 },
+            sniper: { name: "Sniper Rifle", ammo: 5, maxAmmo: 25, damage: 95, fireRate: 800, reloadTime: 2200, type: "sniper", slot: 3, scoped: false },
+            flamethrower: { name: "Flamethrower", ammo: 100, maxAmmo: 300, damage: 12, fireRate: 50, reloadTime: 2000, type: "flame", slot: 4 },
+            grenadelauncher: { name: "Grenade Launcher", ammo: 6, maxAmmo: 18, damage: 85, fireRate: 600, reloadTime: 2500, type: "explosive", slot: 5 },
+            minigun: { name: "Minigun", ammo: 150, maxAmmo: 450, damage: 18, fireRate: 40, reloadTime: 3000, type: "minigun", slot: 6 },
+            shotgun: { name: "Shotgun", ammo: 8, maxAmmo: 32, damage: 15, fireRate: 500, reloadTime: 1800, type: "shotgun", slot: 7 } // damage per pellet (8 pellets)
+        };
+
+        let currentWeaponKey = 'ak47';
+        let isReloading = false;
+        let lastShotTime = 0;
+
+        // Input controls
+        const keys = { w: false, a: false, s: false, d: false, shift: false, space: false };
+        let mouseX = 0, mouseY = 0;
+
+        // Bot Names for Multiplayer simulation
+        const botNames = ["NoobMaster99", "ProBuilderX", "FortniteKing", "RobloxianPro", "DiamondMiner", "EpicGamer2026", "ShadowAssassin", "CraftySteve"];
+        const leaderboardData = [
+            { name: "FortniteKing", kills: 42, deaths: 12, score: 2150 },
+            { name: "BlockyHero (You)", kills: 0, deaths: 0, score: 0 },
+            { name: "ProBuilderX", kills: 31, deaths: 18, score: 1540 },
+            { name: "DiamondMiner", kills: 24, deaths: 20, score: 1120 },
+            { name: "RobloxianPro", kills: 19, deaths: 25, score: 890 }
+        ];
+
+        // --- STREAMING_CHUNK:Initializing Three.js Engine & Scene... ---
+        function initEngine() {
+            const container = document.getElementById('canvas-container');
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x87ceeb); // Sky blue
+            scene.fog = new THREE.FogExp2(0x87ceeb, 0.008);
+
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 5, 10);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            container.appendChild(renderer.domElement);
+
+            clock = new THREE.Clock();
+
+            // Lighting
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+
+            const sunLight = new THREE.DirectionalLight(0xfffaed, 0.9);
+            sunLight.position.set(100, 150, 50);
+            sunLight.castShadow = true;
+            sunLight.shadow.mapSize.width = 2048;
+            sunLight.shadow.mapSize.height = 2048;
+            sunLight.shadow.camera.near = 0.5;
+            sunLight.shadow.camera.far = 500;
+            const d = 100;
+            sunLight.shadow.camera.left = -d;
+            sunLight.shadow.camera.right = d;
+            sunLight.shadow.camera.top = d;
+            sunLight.shadow.camera.bottom = -d;
+            scene.add(sunLight);
+
+            // Window resize handler
+            window.addEventListener('resize', onWindowResize);
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // --- STREAMING_CHUNK:Building Procedural Blocky World (Minecraft/Roblox Style)... ---
+        function createBlockyWorld() {
+            // Ground Terrain (Grass blocks)
+            const groundSize = 300;
+            const grassGeo = new THREE.BoxGeometry(groundSize, 4, groundSize);
+            const grassMat = new THREE.MeshLambertMaterial({ color: 0x55a630 });
+            const ground = new THREE.Mesh(grassGeo, grassMat);
+            ground.position.set(0, -2, 0);
+            ground.receiveShadow = true;
+            scene.add(ground);
+            mapObjects.push(ground);
+
+            // Create Roads / Paths
+            const roadGeo = new THREE.BoxGeometry(100, 4.1, 10);
+            const roadMat = new THREE.MeshLambertMaterial({ color: 0x334155 });
+            const road = new THREE.Mesh(roadGeo, roadMat);
+            road.position.set(0, -1.9, 0);
+            road.receiveShadow = true;
+            scene.add(road);
+
+            const road2 = road.clone();
+            road2.rotation.y = Math.PI / 2;
+            scene.add(road2);
+
+            // Procedural Village Buildings (Minecraft / Roblox Blocky Houses)
+            const buildingColors = [0xb91c1c, 0x1e3a8a, 0x047857, 0xb45309, 0x6d28d9, 0x374151];
+            for (let i = 0; i < 12; i++) {
+                const angle = (i / 12) * Math.PI * 2;
+                const dist = 40 + Math.random() * 50;
+                const bx = Math.cos(angle) * dist;
+                const bz = Math.sin(angle) * dist;
+                
+                const bw = 12 + Math.random() * 8;
+                const bh = 10 + Math.random() * 12;
+                const bd = 12 + Math.random() * 8;
+
+                const bGeo = new THREE.BoxGeometry(bw, bh, bd);
+                const bMat = new THREE.MeshLambertMaterial({ color: buildingColors[i % buildingColors.length] });
+                const building = new THREE.Mesh(bGeo, bMat);
+                building.position.set(bx, bh / 2 - 2, bz);
+                building.castShadow = true;
+                building.receiveShadow = true;
+                scene.add(building);
+                mapObjects.push(building);
+
+                // Roof
+                const roofGeo = new THREE.ConeGeometry(Math.max(bw, bd) * 0.7, 8, 4);
+                const roofMat = new THREE.MeshLambertMaterial({ color: 0x7f1d1d });
+                const roof = new THREE.Mesh(roofGeo, roofMat);
+                roof.position.set(bx, bh + 2, bz);
+                roof.rotation.y = Math.PI / 4;
+                roof.castShadow = true;
+                scene.add(roof);
+            }
+
+            // Trees (Minecraft style blocky trees)
+            for (let i = 0; i < 30; i++) {
+                const tx = (Math.random() - 0.5) * 240;
+                const tz = (Math.random() - 0.5) * 240;
+                if (Math.abs(tx) < 25 && Math.abs(tz) < 25) continue; // Keep center clear
+
+                createBlockyTree(tx, tz);
+            }
+
+            // Spawn Loot Crates around the map
+            for (let i = 0; i < 15; i++) {
+                const cx = (Math.random() - 0.5) * 200;
+                const cz = (Math.random() - 0.5) * 200;
+                spawnLootCrate(cx, 0, cz);
+            }
+        }
+
+        function createBlockyTree(x, z) {
+            const trunkGeo = new THREE.BoxGeometry(3, 10, 3);
+            const trunkMat = new THREE.MeshLambertMaterial({ color: 0x854d0e });
+            const trunk = new THREE.Mesh(trunkGeo, trunkMat);
+            trunk.position.set(x, 3, z);
+            trunk.castShadow = true;
+            scene.add(trunk);
+            mapObjects.push(trunk);
+
+            const leavesGeo = new THREE.BoxGeometry(8, 8, 8);
+            const leavesMat = new THREE.MeshLambertMaterial({ color: 0x15803d });
+            const leaves = new THREE.Mesh(leavesGeo, leavesMat);
+            leaves.position.set(x, 10, z);
+            leaves.castShadow = true;
+            scene.add(leaves);
+            mapObjects.push(leaves);
+        }
+
+        // --- STREAMING_CHUNK:Crates & Power-up Systems... ---
+        function spawnLootCrate(x, y, z) {
+            const crateGeo = new THREE.BoxGeometry(3.5, 3.5, 3.5);
+            const crateMat = new THREE.MeshLambertMaterial({ color: 0xd97706 });
+            const crateMesh = new THREE.Mesh(crateGeo, crateMat);
+            crateMesh.position.set(x, y + 1.75, z);
+            crateMesh.castShadow = true;
+            scene.add(crateMesh);
+
+            // Glowing outline / ribbon
+            const ribbonGeo = new THREE.BoxGeometry(3.6, 0.6, 3.6);
+            const ribbonMat = new THREE.MeshBasicMaterial({ color: 0xfacc15 });
+            const ribbon = new THREE.Mesh(ribbonGeo, ribbonMat);
+            ribbon.position.set(0, 0, 0);
+            crateMesh.add(ribbon);
+
+            crates.push({
+                mesh: crateMesh,
+                x: x,
+                z: z,
+                opened: false
+            });
+        }
+
+        function openCrate(crateObj) {
+            if (crateObj.opened) return;
+            crateObj.opened = true;
+            scene.remove(crateObj.mesh);
+
+            // Random power-up or high-tier weapon drop
+            const rewards = [
+                { type: 'ammo', text: 'Full Ammo Restored!', icon: 'fa-gun' },
+                { type: 'shield', text: '+50 Shield Boost!', icon: 'fa-shield' },
+                { type: 'health', text: '+50 Health Pack!', icon: 'fa-heart' },
+                { type: 'doubledmg', text: 'DOUBLE DAMAGE ACTIVATED (30s)!', icon: 'fa-bolt' },
+                { type: 'weapon', text: 'Found Legendary SCAR / Sniper!', icon: 'fa-star' }
+            ];
+            const reward = rewards[Math.floor(Math.random() * rewards.length)];
+
+            if (reward.type === 'ammo') {
+                Object.keys(weapons).forEach(k => weapons[k].ammo = weapons[k].maxAmmo);
+                updateHUDAmmo();
+            } else if (reward.type === 'shield') {
+                playerStats.shield = Math.min(playerStats.maxShield + 50, 150);
+                updateHUDStats();
+            } else if (reward.type === 'health') {
+                playerStats.health = Math.min(playerStats.maxHealth, playerStats.health + 50);
+                updateHUDStats();
+            } else if (reward.type === 'doubledmg') {
+                playerStats.doubleDamage = true;
+                setTimeout(() => { playerStats.doubleDamage = false; addKillFeedMsg("Double Damage expired."); }, 30000);
+            } else if (reward.type === 'weapon') {
+                currentWeaponKey = Math.random() > 0.5 ? 'sniper' : 'scar';
+                updateActiveWeaponUI();
+            }
+
+            addKillFeedMsg(`<span class="text-yellow-400 font-bold">Loot Crate:</span> ${reward.text}`);
+            
+            // Respawn crate after 30 seconds
+            setTimeout(() => {
+                spawnLootCrate(crateObj.x, 0, crateObj.z);
+                crates = crates.filter(c => c !== crateObj);
+            }, 30000);
+        }
+
+        // --- STREAMING_CHUNK:Bots & AI Multiplayer Simulation... ---
+        function spawnBots() {
+            for (let i = 0; i < 6; i++) {
+                const bName = botNames[i % botNames.length];
+                const bx = (Math.random() - 0.5) * 180;
+                const bz = (Math.random() - 0.5) * 180;
+
+                // Create Blocky Roblox/Minecraft Character Mesh
+                const botGroup = new THREE.Group();
+                
+                // Body
+                const bodyGeo = new THREE.BoxGeometry(2, 3, 1.2);
+                const bodyMat = new THREE.MeshLambertMaterial({ color: Math.random() * 0xffffff });
+                const body = new THREE.Mesh(bodyGeo, bodyMat);
+                body.position.y = 2.5;
+                body.castShadow = true;
+                botGroup.add(body);
+
+                // Head
+                const headGeo = new THREE.BoxGeometry(1.6, 1.6, 1.6);
+                const headMat = new THREE.MeshLambertMaterial({ color: 0xffdbac });
+                const head = new THREE.Mesh(headGeo, headMat);
+                head.position.y = 4.8;
+                head.castShadow = true;
+                botGroup.add(head);
+
+                botGroup.position.set(bx, 0, bz);
+                scene.add(botGroup);
+
+                bots.push({
+                    group: botGroup,
+                    name: bName,
+                    health: 100,
+                    maxHealth: 100,
+                    speed: 0.04 + Math.random() * 0.03,
+                    targetPos: new THREE.Vector3((Math.random() - 0.5) * 200, 0, (Math.random() - 0.5) * 200),
+                    shootCooldown: 0
+                });
+            }
+        }
+
+        // --- STREAMING_CHUNK:Player & Camera Controls... ---
+        function initPlayer() {
+            // Player object is already safely declared globally, ensure position is reset on start
+            player.position.set(0, 0, 15);
+            player.velocity.set(0, 0, 0);
+            player.rotation.yaw = 0;
+            player.rotation.pitch = 0;
+
+            document.addEventListener('keydown', (e) => {
+                if (!gameStarted) return;
+                if (e.code === 'KeyW') keys.w = true;
+                if (e.code === 'KeyS') keys.s = true;
+                if (e.code === 'KeyA') keys.a = true;
+                if (e.code === 'KeyD') keys.d = true;
+                if (e.code === 'ShiftLeft') keys.shift = true;
+                if (e.code === 'Space' && player.position.y <= 0.1) {
+                    player.velocity.y = 0.25;
+                }
+                if (e.code === 'KeyR') reloadWeapon();
+                if (e.code === 'KeyE') checkCrateInteraction();
+                
+                // Weapon Hotbar 1-8
+                if (['Digit1','Digit2','Digit3','Digit4','Digit5','Digit6','Digit7','Digit8'].includes(e.code)) {
+                    const idx = parseInt(e.code.replace('Digit','')) - 1;
+                    selectWeaponSlot(idx);
+                }
+
+                // Console shortcut `/` or `F2`
+                if (e.key === '/' || e.code === 'F2') {
+                    e.preventDefault();
+                    openConsole();
+                }
+
+                // Leaderboard Tab
+                if (e.code === 'Tab') {
+                    e.preventDefault();
+                    toggleLeaderboard(true);
+                }
+            });
+
+            document.addEventListener('keyup', (e) => {
+                if (e.code === 'KeyW') keys.w = false;
+                if (e.code === 'KeyS') keys.s = false;
+                if (e.code === 'KeyA') keys.a = false;
+                if (e.code === 'KeyD') keys.d = false;
+                if (e.code === 'ShiftLeft') keys.shift = false;
+                if (e.code === 'Tab') {
+                    toggleLeaderboard(false);
+                }
+            });
+
+            const container = document.getElementById('canvas-container');
+            container.addEventListener('click', () => {
+                if (gameStarted && !isPointerLocked) {
+                    container.requestPointerLock();
+                }
+            });
+
+            document.addEventListener('pointerlockchange', () => {
+                isPointerLocked = document.pointerLockElement === container;
+            });
+
+            document.addEventListener('mousemove', (e) => {
+                if (!gameStarted || !isPointerLocked) return;
+                const sensitivity = 0.002;
+                player.rotation.yaw -= e.movementX * sensitivity;
+                player.rotation.pitch -= e.movementY * sensitivity;
+                player.rotation.pitch = Math.max(-Math.PI / 2.2, Math.min(Math.PI / 2.2, player.rotation.pitch));
+            });
+
+            container.addEventListener('mousedown', (e) => {
+                if (gameStarted && isPointerLocked && e.button === 0) {
+                    shootWeapon();
+                }
+            });
+        }
+
+        // --- STREAMING_CHUNK:Weapon & Combat Mechanics... ---
+        function selectWeaponSlot(slotIndex) {
+            const keysList = Object.keys(weapons);
+            const targetKey = keysList.find(k => weapons[k].slot === slotIndex);
+            if (targetKey) {
+                currentWeaponKey = targetKey;
+                updateActiveWeaponUI();
+            }
+        }
+
+        function updateActiveWeaponUI() {
+            const w = weapons[currentWeaponKey];
+            document.getElementById('weapon-name').innerText = w.name;
+            document.getElementById('ammo-current').innerText = w.ammo;
+            document.getElementById('ammo-reserve').innerText = w.maxAmmo;
+
+            // Highlight hotbar slot
+            document.querySelectorAll('.weapon-slot').forEach(el => {
+                el.classList.remove('border-cyan-500', 'border-2');
+                el.classList.add('border-slate-700');
+                if (parseInt(el.dataset.slot) === w.slot) {
+                    el.classList.add('border-cyan-500', 'border-2');
+                    el.classList.remove('border-slate-700');
+                }
+            });
+        }
+
+        function updateHUDAmmo() {
+            const w = weapons[currentWeaponKey];
+            document.getElementById('ammo-current').innerText = w.ammo;
+            document.getElementById('ammo-reserve').innerText = w.maxAmmo;
+        }
+
+        function updateHUDStats() {
+            document.getElementById('hp-val').innerText = `${Math.round(playerStats.health)}/${playerStats.maxHealth}`;
+            document.getElementById('hp-bar').style.width = `${(playerStats.health / playerStats.maxHealth) * 100}%`;
+            document.getElementById('shield-val').innerText = `${Math.round(playerStats.shield)}/${playerStats.maxShield}`;
+            document.getElementById('shield-bar').style.width = `${(playerStats.shield / playerStats.maxShield) * 100}%`;
+            document.getElementById('hud-score').innerText = playerStats.score;
+            document.getElementById('hud-streak').innerText = playerStats.streak;
+            document.getElementById('hud-level').innerText = `LVL ${playerStats.level}`;
+        }
+
+        function shootWeapon() {
+            const now = performance.now();
+            const w = weapons[currentWeaponKey];
+            if (now - lastShotTime < w.fireRate) return;
+            if (w.ammo <= 0) {
+                reloadWeapon();
+                return;
+            }
+
+            lastShotTime = now;
+            w.ammo--;
+            updateHUDAmmo();
+
+            // Crosshair spread effect
+            const crosshair = document.getElementById('crosshair');
+            crosshair.classList.add('spread');
+            setTimeout(() => crosshair.classList.remove('spread'), 80);
+
+            // Handle weapon types
+            if (w.type === 'explosive') {
+                fireGrenade();
+            } else if (w.type === 'flame') {
+                fireFlameStream();
+            } else if (w.type === 'shotgun') {
+                for (let i = 0; i < 8; i++) fireRaycastBullet(true);
+            } else {
+                fireRaycastBullet(false);
+            }
+        }
+
+        function fireRaycastBullet(isSpread) {
+            const raycaster = new THREE.Raycaster();
+            let dir = new THREE.Vector3(0, 0, -1);
+            
+            if (isSpread) {
+                dir.x += (Math.random() - 0.5) * 0.15;
+                dir.y += (Math.random() - 0.5) * 0.15;
+            }
+            dir.applyAxisAngle(new THREE.Vector3(1, 0, 0), player.rotation.pitch);
+            dir.applyAxisAngle(new THREE.Vector3(0, 1, 0), player.rotation.yaw);
+
+            raycaster.set(camera.position, dir);
+
+            // Check bot hits
+            const botMeshes = bots.map(b => b.group);
+            const intersects = raycaster.intersectObjects(botMeshes, true);
+
+            if (intersects.length > 0) {
+                const hitMesh = intersects[0].object;
+                const hitBot = bots.find(b => b.group === hitMesh.parent || b.group === hitMesh);
+                if (hitBot) {
+                    const w = weapons[currentWeaponKey];
+                    let dmg = w.damage * (playerStats.doubleDamage ? 2 : 1);
+                    hitBot.health -= dmg;
+                    showDamageIndicator(intersects[0].point);
+
+                    if (hitBot.health <= 0) {
+                        onBotKilled(hitBot);
+                    }
+                }
+            }
+        }
+
+        function fireGrenade() {
+            const nadeGeo = new THREE.SphereGeometry(0.4, 8, 8);
+            const nadeMat = new THREE.MeshBasicMaterial({ color: 0x111111 });
+            const nade = new THREE.Mesh(nadeGeo, nadeMat);
+            
+            nade.position.copy(camera.position);
+            scene.add(nade);
+
+            const dir = new THREE.Vector3(0, 0, -1);
+            dir.applyAxisAngle(new THREE.Vector3(1, 0, 0), player.rotation.pitch);
+            dir.applyAxisAngle(new THREE.Vector3(0, 1, 0), player.rotation.yaw);
+
+            projectiles.push({
+                mesh: nade,
+                velocity: dir.multiplyScalar(0.8).add(new THREE.Vector3(0, 0.3, 0)),
+                life: 120 // frames
+            });
+        }
+
+        function fireFlameStream() {
+            for (let i = 0; i < 5; i++) {
+                const flameGeo = new THREE.BoxGeometry(0.8, 0.8, 0.8);
+                const flameMat = new THREE.MeshBasicMaterial({ color: Math.random() > 0.5 ? 0xf97316 : 0xef4444 });
+                const flame = new THREE.Mesh(flameGeo, flameMat);
+                flame.position.copy(camera.position);
+                scene.add(flame);
+
+                const dir = new THREE.Vector3((Math.random() - 0.5) * 0.2, (Math.random() - 0.5) * 0.2, -1);
+                dir.applyAxisAngle(new THREE.Vector3(1, 0, 0), player.rotation.pitch);
+                dir.applyAxisAngle(new THREE.Vector3(0, 1, 0), player.rotation.yaw);
+
+                particles.push({
+                    mesh: flame,
+                    velocity: dir.multiplyScalar(0.6),
+                    life: 25
+                });
+            }
+        }
+
+        function reloadWeapon() {
+            if (isReloading) return;
+            const w = weapons[currentWeaponKey];
+            if (w.ammo >= w.maxAmmo || w.maxAmmo <= 0) return;
+
+            isReloading = true;
+            document.getElementById('reload-indicator').classList.remove('hidden');
+
+            setTimeout(() => {
+                w.ammo = w.maxAmmo;
+                updateHUDAmmo();
+                isReloading = false;
+                document.getElementById('reload-indicator').classList.add('hidden');
+            }, w.reloadTime);
+        }
+
+        function onBotKilled(bot) {
+            scene.remove(bot.group);
+            bots = bots.filter(b => b !== bot);
+
+            playerStats.kills++;
+            playerStats.score += 150;
+            playerStats.streak++;
+            if (playerStats.score >= playerStats.level * 500) {
+                playerStats.level++;
+                addKillFeedMsg(`<span class="text-yellow-400 font-bold">LEVEL UP!</span> You reached Level ${playerStats.level}!`);
+            }
+            updateHUDStats();
+            addKillFeedMsg(`<span class="text-cyan-400">You</span> eliminated <span class="text-rose-400">${bot.name}</span>`);
+
+            // Respawn new bot after 3 seconds
+            setTimeout(() => {
+                spawnSingleBot();
+            }, 3000);
+        }
+
+        function spawnSingleBot() {
+            const bName = botNames[Math.floor(Math.random() * botNames.length)];
+            const bx = (Math.random() - 0.5) * 180;
+            const bz = (Math.random() - 0.5) * 180;
+
+            const botGroup = new THREE.Group();
+            const bodyGeo = new THREE.BoxGeometry(2, 3, 1.2);
+            const bodyMat = new THREE.MeshLambertMaterial({ color: Math.random() * 0xffffff });
+            const body = new THREE.Mesh(bodyGeo, bodyMat);
+            body.position.y = 2.5;
+            botGroup.add(body);
+
+            const headGeo = new THREE.BoxGeometry(1.6, 1.6, 1.6);
+            const headMat = new THREE.MeshLambertMaterial({ color: 0xffdbac });
+            const head = new THREE.Mesh(headGeo, headMat);
+            head.position.y = 4.8;
+            botGroup.add(head);
+
+            botGroup.position.set(bx, 0, bz);
+            scene.add(botGroup);
+
+            bots.push({
+                group: botGroup,
+                name: bName,
+                health: 100,
+                maxHealth: 100,
+                speed: 0.04 + Math.random() * 0.03,
+                targetPos: new THREE.Vector3((Math.random() - 0.5) * 200, 0, (Math.random() - 0.5) * 200)
+            });
+        }
+
+        function checkCrateInteraction() {
+            crates.forEach(c => {
+                const dist = player.position.distanceTo(new THREE.Vector3(c.x, 0, c.z));
+                if (dist < 6) {
+                    openCrate(c);
+                }
+            });
+        }
+
+        function showDamageIndicator(point) {
+            // Visual hit marker
+            const crosshair = document.getElementById('crosshair');
+            crosshair.style.borderColor = '#ef4444';
+            setTimeout(() => crosshair.style.borderColor = '', 100);
+        }
+
+        function addKillFeedMsg(msg) {
+            const feed = document.getElementById('kill-feed');
+            const div = document.createElement('div');
+            div.className = 'bg-slate-900/90 text-xs px-3 py-1.5 rounded-lg border border-slate-800 shadow-md animate-fade-in text-center';
+            div.innerHTML = msg;
+            feed.appendChild(div);
+            setTimeout(() => div.remove(), 4000);
+        }
+
+        // --- STREAMING_CHUNK:Admin & Owner Command Execution System... ---
+        function openConsole() {
+            document.getElementById('admin-console').classList.remove('hidden');
+            if (isPointerLocked) document.exitPointerLock();
+            document.getElementById('console-input').focus();
+        }
+
+        function closeConsole() {
+            document.getElementById('admin-console').classList.add('hidden');
+        }
+
+        function executeConsoleCommand(cmdLine) {
+            const output = document.getElementById('console-output');
+            const lineDiv = document.createElement('div');
+            lineDiv.className = 'text-slate-300';
+            lineDiv.innerText = `> ${cmdLine}`;
+            output.appendChild(lineDiv);
+
+            const parts = cmdLine.trim().split(' ');
+            const cmd = parts[0].toLowerCase();
+            const arg1 = parts[1] ? parts[1].toLowerCase() : '';
+            const arg2 = parts[2] ? parts[2].toLowerCase() : '';
+
+            let response = "";
+
+            switch(cmd) {
+                case '/help':
+                    response = "Available Commands:\n" +
+                               "/login [password] (Owner login: owner123)\n" +
+                               "/grantadmin [username] (Owner only)\n" +
+                               "/givegun [name/all] (AK, AR, SCAR, Sniper, Flamethrower, GrenadeLauncher, Minigun, Shotgun)\n" +
+                               "/speed [val] (Set move speed)\n" +
+                               "/godmode (Toggle invincible mode)\n" +
+                               "/heal (Restore full health & shield)\n" +
+                               "/spawncrate (Spawn loot crate nearby)\n" +
+                               "/meteor (Summon explosive meteors)\n" +
+                               "/gravity [val] (Change world gravity)\n" +
+                               "/announce [msg] (Global announcement)\n" +
+                               "/clear (Clear console)";
+                    break;
+                case '/login':
+                    if (arg1 === 'owner123') {
+                        playerStats.isOwner = true;
+                        playerStats.isAdmin = true;
+                        response = "SUCCESS: Granted [OWNER] & [ADMIN] privileges!";
+                        addKillFeedMsg(`<span class="text-amber-400 font-bold">OWNER ACCESS GRANTED</span> to ${playerStats.name}`);
+                    } else {
+                        response = "ERROR: Incorrect Owner Password!";
+                    }
+                    break;
+                case '/grantadmin':
+                    if (!playerStats.isOwner) {
+                        response = "ERROR: Only the Owner can grant admin rights!";
+                    } else if (!arg1) {
+                        response = "Usage: /grantadmin [username]";
+                    } else {
+                        playerStats.isAdmin = true;
+                        response = `SUCCESS: Granted Admin rights to ${arg1}!`;
+                        addKillFeedMsg(`<span class="text-purple-400 font-bold">ADMIN GRANTED:</span> ${arg1}`);
+                    }
+                    break;
+                case '/givegun':
+                    if (!playerStats.isAdmin && !playerStats.isOwner) {
+                        response = "ERROR: Admin permissions required!";
+                    } else if (arg1 === 'all') {
+                        Object.keys(weapons).forEach(k => weapons[k].ammo = 999);
+                        response = "SUCCESS: All weapons given with max ammo!";
+                    } else if (weapons[arg1]) {
+                        currentWeaponKey = arg1;
+                        updateActiveWeaponUI();
+                        response = `SUCCESS: Equipped ${weapons[arg1].name}!`;
+                    } else {
+                        response = "Unknown gun. Options: ak47, ar15, scar, sniper, flamethrower, grenadelauncher, minigun, shotgun, all";
+                    }
+                    break;
+                case '/godmode':
+                    if (!playerStats.isAdmin && !playerStats.isOwner) {
+                        response = "ERROR: Admin permissions required!";
+                    } else {
+                        playerStats.godMode = !playerStats.godMode;
+                        response = `God Mode is now ${playerStats.godMode ? 'ON' : 'OFF'}`;
+                    }
+                    break;
+                case '/heal':
+                    playerStats.health = playerStats.maxHealth;
+                    playerStats.shield = playerStats.maxShield;
+                    updateHUDStats();
+                    response = "SUCCESS: Health and shield fully restored!";
+                    break;
+                case '/speed':
+                    if (arg1) {
+                        playerStats.speed = parseFloat(arg1);
+                        response = `SUCCESS: Speed set to ${playerStats.speed}`;
+                    } else {
+                        response = `Current speed: ${playerStats.speed}`;
+                    }
+                    break;
+                case '/spawncrate':
+                    spawnLootCrate(player.position.x + (Math.random()-0.5)*10, 0, player.position.z + (Math.random()-0.5)*10);
+                    response = "SUCCESS: Loot crate spawned!";
+                    break;
+                case '/meteor':
+                    response = "WARNING: Meteor shower initiated!";
+                    triggerMeteorShower();
+                    break;
+                case '/announce':
+                    const msg = parts.slice(1).join(' ');
+                    addKillFeedMsg(`<span class="text-red-500 font-black animate-pulse">ANNOUNCEMENT:</span> ${msg}`);
+                    response = `Announcement broadcasted: "${msg}"`;
+                    break;
+                case '/clear':
+                    output.innerHTML = '';
+                    return;
+                default:
+                    response = `Unknown command: ${cmd}. Type /help for assistance.`;
+            }
+
+            const resDiv = document.createElement('div');
+            resDiv.className = 'text-yellow-400 whitespace-pre-wrap';
+            resDiv.innerText = response;
+            output.appendChild(resDiv);
+            output.scrollTop = output.scrollHeight;
+        }
+
+        function triggerMeteorShower() {
+            for (let i = 0; i < 5; i++) {
+                setTimeout(() => {
+                    const mx = player.position.x + (Math.random() - 0.5) * 80;
+                    const mz = player.position.z + (Math.random() - 0.5) * 80;
+                    
+                    const metGeo = new THREE.DodecahedronGeometry(3);
+                    const metMat = new THREE.MeshBasicMaterial({ color: 0xf97316 });
+                    const meteor = new THREE.Mesh(metGeo, metMat);
+                    meteor.position.set(mx, 120, mz);
+                    scene.add(meteor);
+
+                    // Animate meteor crash
+                    const fallInterval = setInterval(() => {
+                        meteor.position.y -= 4;
+                        meteor.rotation.x += 0.1;
+                        if (meteor.position.y <= 0) {
+                            clearInterval(fallInterval);
+                            scene.remove(meteor);
+                            // Explosion effect
+                            createExplosion(mx, 0, mz);
+                        }
+                    }, 30);
+                }, i * 600);
+            }
+        }
+
+        function createExplosion(x, y, z) {
+            const expGeo = new THREE.SphereGeometry(8, 16, 16);
+            const expMat = new THREE.MeshBasicMaterial({ color: 0xef4444, transparent: true, opacity: 0.8 });
+            const explosion = new THREE.Mesh(expGeo, expMat);
+            explosion.position.set(x, y + 2, z);
+            scene.add(explosion);
+
+            let scale = 1;
+            const expAnim = setInterval(() => {
+                scale += 0.3;
+                explosion.scale.set(scale, scale, scale);
+                explosion.material.opacity -= 0.1;
+                if (explosion.material.opacity <= 0) {
+                    clearInterval(expAnim);
+                    scene.remove(explosion);
+                }
+            }, 40);
+
+            // Check damage to player or bots
+            const dist = player.position.distanceTo(new THREE.Vector3(x, y, z));
+            if (dist < 12 && !playerStats.godMode) {
+                playerStats.health -= 40;
+                updateHUDStats();
+            }
+        }
+
+        function toggleLeaderboard(show) {
+            const modal = document.getElementById('leaderboard-modal');
+            if (show) {
+                modal.classList.remove('hidden');
+                populateLeaderboardTable();
+            } else {
+                modal.classList.add('hidden');
+            }
+        }
+
+        function populateLeaderboardTable() {
+            // Update player entry
+            leaderboardData[1].name = `${playerStats.name} (You)`;
+            leaderboardData[1].kills = playerStats.kills;
+            leaderboardData[1].deaths = playerStats.deaths;
+            leaderboardData[1].score = playerStats.score;
+
+            // Sort by score
+            leaderboardData.sort((a, b) => b.score - a.score);
+
+            const tbody = document.getElementById('leaderboard-tbody');
+            tbody.innerHTML = '';
+            leaderboardData.forEach((item, idx) => {
+                const tr = document.createElement('tr');
+                tr.className = 'border-b border-slate-800/40 hover:bg-slate-800/30 transition-all';
+                tr.innerHTML = `
+                    <td class="py-3 px-3 font-bold ${idx === 0 ? 'text-yellow-400' : 'text-slate-300'}">#${idx + 1}</td>
+                    <td class="py-3 px-3 font-semibold text-white">${item.name}</td>
+                    <td class="py-3 px-3 text-center text-emerald-400">${item.kills}</td>
+                    <td class="py-3 px-3 text-center text-rose-400">${item.deaths}</td>
+                    <td class="py-3 px-3 text-right font-bold text-cyan-400">${item.score}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        // --- STREAMING_CHUNK:Main Animation & Game Loop... ---
+        function animate() {
+            requestAnimationFrame(animate);
+
+            const delta = clock.getDelta();
+
+            if (gameStarted) {
+                // Player movement
+                const moveSpeed = playerStats.speed * (keys.shift ? 1.6 : 1);
+                const forward = new THREE.Vector3(0, 0, -1).applyAxisAngle(new THREE.Vector3(0, 1, 0), player.rotation.yaw);
+                const right = new THREE.Vector3(1, 0, 0).applyAxisAngle(new THREE.Vector3(0, 1, 0), player.rotation.yaw);
+
+                let moveDir = new THREE.Vector3();
+                if (keys.w) moveDir.add(forward);
+                if (keys.s) moveDir.sub(forward);
+                if (keys.a) moveDir.sub(right);
+                if (keys.d) moveDir.add(right);
+                moveDir.normalize();
+
+                player.position.addScaledVector(moveDir, moveSpeed);
+
+                // Gravity & Jumping
+                player.velocity.y -= 0.012; // gravity
+                player.position.y += player.velocity.y;
+                if (player.position.y <= 0) {
+                    player.position.y = 0;
+                    player.velocity.y = 0;
+                }
+
+                // Update Camera position
+                camera.position.copy(player.position).add(new THREE.Vector3(0, 3.2, 0));
+                
+                // Camera rotation
+                const euler = new THREE.Euler(player.rotation.pitch, player.rotation.yaw, 0, 'YXZ');
+                camera.quaternion.setFromEuler(euler);
+
+                // Update Bots AI
+                bots.forEach(bot => {
+                    const dir = new THREE.Vector3().subVectors(player.position, bot.group.position);
+                    const dist = dir.length();
+                    dir.y = 0;
+                    dir.normalize();
+
+                    if (dist > 8) {
+                        bot.group.position.addScaledVector(dir, bot.speed);
+                        bot.group.lookAt(player.position.x, bot.group.position.y, player.position.z);
+                    } else {
+                        // Attack player
+                        if (Math.random() < 0.03 && !playerStats.godMode) {
+                            playerStats.health -= 5;
+                            updateHUDStats();
+                            if (playerStats.health <= 0) {
+                                playerStats.deaths++;
+                                playerStats.streak = 0;
+                                playerStats.health = playerStats.maxHealth;
+                                playerStats.shield = playerStats.maxShield;
+                                player.position.set(0, 0, 15);
+                                addKillFeedMsg(`<span class="text-rose-500 font-bold">WIPED OUT!</span> You were eliminated by bots.`);
+                                updateHUDStats();
+                            }
+                        }
+                    }
+                });
+
+                // Update Projectiles (Grenades)
+                projectiles.forEach((p, idx) => {
+                    p.velocity.y -= 0.015;
+                    p.mesh.position.add(p.velocity);
+                    p.life--;
+
+                    if (p.mesh.position.y <= 0 || p.life <= 0) {
+                        createExplosion(p.mesh.position.x, 0, p.mesh.position.z);
+                        scene.remove(p.mesh);
+                        projectiles.splice(idx, 1);
+                    }
+                });
+
+                // Update Particles (Flame)
+                particles.forEach((pt, idx) => {
+                    pt.mesh.position.add(pt.velocity);
+                    pt.life--;
+                    if (pt.life <= 0) {
+                        scene.remove(pt.mesh);
+                        particles.splice(idx, 1);
+                    }
+                });
+
+                // Check Crate Proximity Prompt
+                let nearCrate = false;
+                crates.forEach(c => {
+                    if (player.position.distanceTo(new THREE.Vector3(c.x, 0, c.z)) < 6) {
+                        nearCrate = true;
+                    }
+                });
+                const prompt = document.getElementById('interaction-prompt');
+                if (nearCrate) prompt.classList.remove('hidden');
+                else prompt.classList.add('hidden');
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        // --- STREAMING_CHUNK:UI Event Listeners & Initialization... ---
+        window.addEventListener('DOMContentLoaded', () => {
+            initEngine();
+            createBlockyWorld();
+            initPlayer(); // Ensure player is fully initialized right on load
+
+            // Skin selection buttons
+            document.querySelectorAll('.skin-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    document.querySelectorAll('.skin-btn').forEach(b => {
+                        b.classList.remove('border-cyan-500', 'text-cyan-300', 'border-2');
+                        b.classList.add('border-slate-700', 'text-slate-300');
+                    });
+                    e.target.classList.add('border-cyan-500', 'text-cyan-300', 'border-2');
+                    e.target.classList.remove('border-slate-700', 'text-slate-300');
+                    playerStats.skin = e.target.dataset.skin;
+                });
+            });
+
+            // Start Game Button
+            document.getElementById('start-game-btn').addEventListener('click', () => {
+                const nameInput = document.getElementById('player-name-input').value.trim();
+                if (nameInput) playerStats.name = nameInput;
+
+                document.getElementById('main-menu').classList.add('hidden');
+                gameStarted = true;
+                spawnBots();
+
+                const container = document.getElementById('canvas-container');
+                container.requestPointerLock();
+            });
+
+            // Leaderboard Modal Listeners
+            document.getElementById('open-leaderboard-btn').addEventListener('click', () => toggleLeaderboard(true));
+            document.getElementById('close-leaderboard-btn').addEventListener('click', () => toggleLeaderboard(false));
+
+            // Console Modal Listeners
+            document.getElementById('close-console-btn').addEventListener('click', closeConsole);
+            document.getElementById('console-send-btn').addEventListener('click', () => {
+                const input = document.getElementById('console-input');
+                if (input.value.trim()) {
+                    executeConsoleCommand(input.value.trim());
+                    input.value = '';
+                }
+            });
+            document.getElementById('console-input').addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    const input = document.getElementById('console-input');
+                    if (input.value.trim()) {
+                        executeConsoleCommand(input.value.trim());
+                        input.value = '';
+                    }
+                }
+            });
+
+            // Quick Command Buttons
+            document.querySelectorAll('.quick-cmd').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const cmd = e.target.dataset.cmd;
+                    executeConsoleCommand(cmd);
+                });
+            });
+
+            // Hotbar click selection
+            document.querySelectorAll('.weapon-slot').forEach(slot => {
+                slot.addEventListener('click', () => {
+                    selectWeaponSlot(parseInt(slot.dataset.slot));
+                });
+            });
+
+            // Start Animation Loop
+            animate();
+        });
+    </script>
+</body>
+</html>
